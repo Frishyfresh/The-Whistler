@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THE WHISTLER | A Retro Horror Experience</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --blood-red: #8a0707;
+            --neon-red: #ff0000;
+            --dark-bg: #050505;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--dark-bg);
+            color: #eee;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* CRT Scanline Effect */
+        body::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 500;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        /* UI Screens */
+        .overlay-screen {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            background: var(--dark-bg);
+            transition: opacity 0.5s ease;
+        }
+
+        .title-text {
+            color: var(--neon-red);
+            font-size: clamp(2rem, 10vw, 6rem);
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 15px;
+            margin-bottom: 2rem;
+            text-align: center;
+            filter: drop-shadow(0 0 10px var(--blood-red));
+            animation: flicker 3s infinite;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 1; }
+            5% { opacity: 0.8; }
+            10% { opacity: 1; }
+            15% { opacity: 0.9; }
+            70% { opacity: 1; }
+            71% { opacity: 0.2; }
+            72% { opacity: 1; }
+            100% { opacity: 1; }
+        }
+
+        .btn {
+            background: transparent;
+            color: var(--neon-red);
+            border: 2px solid var(--blood-red);
+            padding: 1rem 3rem;
+            font-size: 1.5rem;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+            outline: none;
+        }
+
+        .btn:hover {
+            background: var(--blood-red);
+            color: white;
+            box-shadow: 0 0 20px var(--neon-red);
+        }
+
+        /* In-Game HUD */
+        #hud-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: none;
+            z-index: 100;
+        }
+
+        #bottom-bar {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .instruction {
+            font-size: 1.2rem;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 15px;
+            border-radius: 4px;
+            color: #ccc;
+        }
+
+        #work-progress-wrap {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 10px;
+            background: #222;
+            border: 1px solid #444;
+            display: none;
+        }
+
+        #work-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: #0f0;
+            box-shadow: 0 0 10px #0f0;
+        }
+
+        /* Jumpscare */
+        #jumpscare-face {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: black;
+            display: none;
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .face-svg {
+            width: 80%;
+            max-width: 500px;
+            filter: drop-shadow(0 0 20px red);
+        }
+
+        #death-screen { display: none; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Main Menu -->
+    <div id="title-screen" class="overlay-screen">
+        <h1 class="title-text">The Whistler</h1>
+        <button class="btn" onclick="startApp()">Enter Reality</button>
+        <p style="margin-top: 50px; color: #444; font-size: 0.8rem;">USE HEADPHONES FOR BEST EXPERIENCE</p>
+    </div>
+
+    <!-- Death/Restart Screen -->
+    <div id="death-screen" class="overlay-screen">
+        <h1 class="title-text" style="font-size: 4rem;">EYES OPEN</h1>
+        <button class="btn" onclick="location.reload()">Wake Up</button>
+    </div>
+
+    <!-- Jumpscare Graphic -->
+    <div id="jumpscare-face">
+        <svg class="face-svg" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="45" fill="#ddd" />
+            <circle cx="30" cy="40" r="10" fill="black" />
+            <circle cx="70" cy="40" r="10" fill="black" />
+            <circle class="pupil" cx="30" cy="40" r="3" fill="red" />
+            <circle class="pupil" cx="70" cy="40" r="3" fill="red" />
+            <path d="M 25 70 Q 50 90 75 70" stroke="black" stroke-width="5" fill="none" stroke-linecap="round" />
+        </svg>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud-container">
+        <div id="work-progress-wrap">
+            <div id="work-progress-fill"></div>
+        </div>
+        <div id="bottom-bar">
+            <span id="interaction-text" class="instruction">WASD to Move</span>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        let scene, camera, renderer, clock;
+        let gameState = 'MENU';
+        let workProgress = 0;
+        let boxesCarried = 0;
+        let totalBoxesInTruck = 0;
+        let boxCounter = 0;
+        let whistleActive = false;
+        let whistleCooldown = 0;
+        let manMesh;
+        let isLocked = true;
+        let keys = {};
+        let audioCtx;
+
+        const HUD = {
+            progress: document.getElementById('work-progress-wrap'),
+            fill: document.getElementById('work-progress-fill'),
+            text: document.getElementById('interaction-text'),
+            hud: document.getElementById('hud-container')
+        };
+
+        function startApp() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            document.getElementById('title-screen').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('title-screen').style.display = 'none';
+                HUD.hud.style.display = 'block';
+                gameState = 'OFFICE';
+                initGame();
+            }, 500);
+        }
+
+        function initGame() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020202);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            // Low res for pixel effect
+            renderer.setSize(window.innerWidth / 3, window.innerHeight / 3, false);
+            renderer.domElement.style.width = '100%';
+            renderer.domElement.style.height = '100%';
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Office Environment
+            const room = new THREE.Mesh(
+                new THREE.BoxGeometry(12, 7, 10),
+                new THREE.MeshStandardMaterial({ color: 0x151515, side: THREE.BackSide })
+            );
+            scene.add(room);
+
+            // Window Plane
+            const win = new THREE.Mesh(
+                new THREE.PlaneGeometry(3, 4),
+                new THREE.MeshBasicMaterial({ color: 0x010105 })
+            );
+            win.position.set(-5.9, 0.5, 0);
+            win.rotation.y = Math.PI/2;
+            scene.add(win);
+
+            // The Whistler mesh
+            const manGroup = new THREE.Group();
+            const mHead = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.7,0.7), new THREE.MeshBasicMaterial({color: 0xffffff}));
+            const mBody = new THREE.Mesh(new THREE.BoxGeometry(0.8,1.5,0.6), new THREE.MeshBasicMaterial({color: 0xffffff}));
+            mBody.position.y = -1.1;
+            manGroup.add(mHead, mBody);
+            manMesh = manGroup;
+            manMesh.position.set(-6.2, 6, 0);
+            manMesh.rotation.y = Math.PI/2;
+            scene.add(manMesh);
+
+            // Desk
+            const desk = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), new THREE.MeshStandardMaterial({color: 0x221105}));
+            desk.position.set(4.5, -2.5, 0);
+            scene.add(desk);
+
+            // Screen
+            const screen = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.8), new THREE.MeshBasicMaterial({color: 0x001100}));
+            screen.position.set(4.4, -1.8, 0);
+            screen.rotation.y = -Math.PI/2;
+            scene.add(screen);
+
+            const light = new THREE.PointLight(0xffffff, 0.7, 20);
+            light.position.set(0, 3, 0);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x080808));
+
+            camera.position.set(0, 0, 4);
+
+            window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+            window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+            window.addEventListener('resize', onWindowResize);
+
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth / 3, window.innerHeight / 3, false);
+        }
+
+        function playWhistleSound() {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(850, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 2);
+            g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 2);
+        }
+
+        function playThud() {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(60, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.5);
+            g.gain.setValueAtTime(0.8, audioCtx.currentTime);
+            g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        function showJumpscare() {
+            gameState = 'DEAD';
+            playThud();
+            document.getElementById('jumpscare-face').style.display = 'flex';
+            setTimeout(() => {
+                document.getElementById('jumpscare-face').style.display = 'none';
+                document.getElementById('death-screen').style.display = 'flex';
+                HUD.hud.style.display = 'none';
+            }, 800);
+        }
+
+        function updateOffice(dt) {
+            // Movement logic
+            if (keys['a']) camera.position.x -= 4 * dt;
+            if (keys['d']) camera.position.x += 4 * dt;
+            camera.position.x = THREE.MathUtils.clamp(camera.position.x, -3, 3);
+            camera.lookAt(new THREE.Vector3(camera.position.x * 2.5, 0, 0));
+
+            const nearWindow = camera.position.x < -1.5;
+            const nearDesk = camera.position.x > 1.5;
+
+            if (nearWindow) {
+                HUD.text.innerText = "WINDOW: [E] TO LOCK";
+                if (keys['e']) { isLocked = true; whistleActive = false; }
+            } else if (nearDesk) {
+                HUD.text.innerText = "COMPUTER: [HOLD F] TO WORK";
+                HUD.progress.style.display = 'block';
+                if (keys['f']) {
+                    workProgress += 15 * dt;
+                    HUD.fill.style.width = workProgress + '%';
+                    if (workProgress >= 100) triggerNightmare();
+                }
+            } else {
+                HUD.text.innerText = "A / D TO LOOK AROUND";
+                HUD.progress.style.display = 'none';
+            }
+
+            // Whistle Spawning
+            whistleCooldown += dt;
+            if (whistleCooldown > 7 && !whistleActive) {
+                if (Math.random() < 0.01) {
+                    playWhistleSound();
+                    whistleActive = true;
+                    isLocked = false;
+                    manMesh.position.y = 6;
+                    whistleCooldown = 0;
+                }
+            }
+
+            if (whistleActive) {
+                manMesh.position.y -= 5 * dt;
+                if (manMesh.position.y < -3.5) {
+                    if (!isLocked) showJumpscare();
+                    else { whistleActive = false; manMesh.position.y = 6; }
+                }
+            }
+        }
+
+        function triggerNightmare() {
+            gameState = 'TRANSITION';
+            HUD.text.innerText = "DONE. GET TO THE DOOR.";
+            setTimeout(() => {
+                playThud();
+                document.body.style.backgroundColor = 'black';
+                setTimeout(setupBoxPhase, 1500);
+            }, 2000);
+        }
+
+        function setupBoxPhase() {
+            gameState = 'BOXES';
+            HUD.progress.style.display = 'none';
+            while(scene.children.length > 0) scene.remove(scene.children[0]);
+            
+            scene.background = new THREE.Color(0x010101);
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(100,100), new THREE.MeshStandardMaterial({color:0x050505}));
+            ground.rotation.x = -Math.PI/2;
+            scene.add(ground);
+            
+            const light = new THREE.PointLight(0xffffff, 0.8, 20);
+            light.position.set(0, 5, 0);
+            scene.add(light);
+
+            // The Truck
+            const truck = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 7), new THREE.MeshStandardMaterial({color:0x111111}));
+            truck.position.set(8, 1.5, -5);
+            scene.add(truck);
+
+            camera.position.set(0, 1.6, 6);
+        }
+
+        function updateBoxes(dt) {
+            if (keys['w']) camera.position.z -= 6 * dt;
+            if (keys['s']) camera.position.z += 6 * dt;
+            if (keys['a']) camera.position.x -= 6 * dt;
+            if (keys['d']) camera.position.x += 6 * dt;
+
+            HUD.text.innerText = `LOADED: ${totalBoxesInTruck}/20 | CARRIED: ${boxesCarried}`;
+
+            // Pickup (center area)
+            if (camera.position.distanceTo(new THREE.Vector3(0,0,0)) < 2.5 && keys['e'] && boxesCarried < 2) {
+                keys['e'] = false;
+                boxesCarried++;
+                boxCounter++;
+                if (boxCounter === 5) {
+                    showJumpscare();
+                    boxesCarried = 0;
+                    boxCounter = 6; // flag to prevent loop
+                }
+            }
+
+            // Dropoff (truck area)
+            if (camera.position.distanceTo(new THREE.Vector3(8, 1.6, -5)) < 3.5 && keys['e'] && boxesCarried > 0) {
+                keys['e'] = false;
+                totalBoxesInTruck += boxesCarried;
+                boxesCarried = 0;
+                if (totalBoxesInTruck >= 20) {
+                    gameState = 'CRASH';
+                    setTimeout(() => location.reload(), 3000);
+                }
+            }
+        }
+
+        function animate() {
+            const dt = clock.getDelta();
+            if (gameState === 'OFFICE') updateOffice(dt);
+            if (gameState === 'BOXES') updateBoxes(dt);
+            if (gameState === 'CRASH') {
+                HUD.text.innerText = "CRASHING... WAKING UP...";
+                camera.position.z -= 50 * dt;
+                camera.rotation.z += 5 * dt;
+            }
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+    </script>
+</body>
+  </html>
